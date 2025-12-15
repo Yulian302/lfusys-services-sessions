@@ -1,6 +1,8 @@
 package main
 
-import "context"
+import (
+	"context"
+)
 
 type SessionService interface {
 	CreateSession(context.Context) (*UploadSession, error)
