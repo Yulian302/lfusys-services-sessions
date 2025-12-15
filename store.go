@@ -1,15 +1,23 @@
 package main
 
-import "context"
+import (
+	"context"
 
-type DynamoDbStore struct {
-	// add here dynamodb
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+)
+
+type store struct {
+	Client    *dynamodb.Client
+	TableName string
 }
 
-func NewStore() *DynamoDbStore {
-	return &DynamoDbStore{}
+func NewStore(client *dynamodb.Client, tableName string) *store {
+	return &store{
+		Client:    client,
+		TableName: tableName,
+	}
 }
 
-func (s *DynamoDbStore) Create(context.Context) error {
+func (s *store) Create(context.Context) error {
 	return nil
 }
