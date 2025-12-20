@@ -15,13 +15,12 @@ import (
 func main() {
 	cfg := common.LoadConfig()
 
-	// verify aws credentials
-	if cfg.AWS_ACCESS_KEY_ID == "" || cfg.AWS_SECRET_ACCESS_KEY == "" {
+	if err := cfg.AWSConfig.ValidateSecrets(); err != nil {
 		log.Fatal("aws security credentials were not found")
 	}
 
 	// db client
-	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(cfg.AWS_REGION))
+	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(cfg.AWSConfig.Region))
 	if err != nil {
 		log.Fatalf("failed to load aws config: %v", err)
 	}
@@ -30,9 +29,9 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 
-	l, err := net.Listen("tcp", cfg.GRPCAddr)
+	l, err := net.Listen("tcp", cfg.ServiceConfig.SessionGRPCAddr)
 	if err != nil {
-		log.Fatalf("grpc error: failed to listen to %v", cfg.GRPCAddr)
+		log.Fatalf("grpc error: failed to listen to %v", cfg.ServiceConfig.SessionGRPCAddr)
 	}
 	defer l.Close()
 
@@ -40,7 +39,7 @@ func main() {
 	svc.Create(context.Background())
 	NewGrpcHandler(grpcServer, cfg.Tracing, store, &cfg)
 
-	log.Printf("Grpc server started at %v", cfg.GRPCAddr)
+	log.Printf("Grpc server started at %v", cfg.ServiceConfig.SessionGRPCAddr)
 
 	if err := grpcServer.Serve(l); err != nil {
 		log.Fatal("cannot start grpc server: ", err.Error())

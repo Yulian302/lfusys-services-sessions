@@ -43,7 +43,7 @@ func (h *grpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 	uploadUrls := make([]string, totalChunks)
 	for i := uint64(0); i < totalChunks; i++ {
 		// load balancer url in PROD, single worker url in DEV
-		uploadUrls[i] = fmt.Sprintf("%s/upload/%s/chunk/%d", h.config.UploadServiceUrl, uploadId, i+1)
+		uploadUrls[i] = fmt.Sprintf("%s/upload/%s/chunk/%d", h.config.ServiceConfig.UploadsURL, uploadId, i+1)
 	}
 	var uploadSession UploadSession = UploadSession{
 		UploadId:       uploadId,
