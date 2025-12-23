@@ -46,12 +46,12 @@ func (h *grpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 		uploadUrls[i] = fmt.Sprintf("%s/upload/%s/chunk/%d", h.config.ServiceConfig.UploadsURL, uploadId, i+1)
 	}
 	var uploadSession UploadSession = UploadSession{
-		UploadId:       uploadId,
-		UserEmail:      req.UserEmail,
-		FileSize:       req.FileSize,
-		TotalChunks:    uint32(totalChunks),
-		UploadedChunks: []string{},
-		ExpirationTime: time.Now().Add(2 * time.Hour), // session should expire after 2 hours
+		UploadId:    uploadId,
+		UserEmail:   req.UserEmail,
+		FileSize:    req.FileSize,
+		TotalChunks: uint32(totalChunks),
+		// UploadedChunks: []int64{},
+		ExpirationTime: time.Now().Add(2 * time.Hour), // session should expire in 2 hours
 		CreatedAt:      time.Now(),
 		Status:         "pending",
 	}
