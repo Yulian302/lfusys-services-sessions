@@ -14,18 +14,3 @@ type UploadSession struct {
 	CreatedAt      time.Time `dynamodbav:"created_at"`      // Session creation timestamp
 	Status         string    `dynamodbav:"status"`          // Current upload status
 }
-
-type File struct {
-	FileId      string
-	UploadId    string
-	OwnerUserId string
-	Size        int
-	CreatedAt   time.Time
-	Checksum    string
-	Chunks      []Chunk
-}
-
-type Chunk struct {
-	Number uint32
-	Key    string
-}
