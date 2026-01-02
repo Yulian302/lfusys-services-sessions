@@ -57,3 +57,15 @@ func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 
 	return &pb.UploadReply{TotalChunks: uint32(totalChunks), UploadUrls: uploadUrls, UploadId: uploadId}, nil
 }
+
+func (h *GrpcHandler) GetUploadStatus(ctx context.Context, upload *pb.UploadID) (*pb.StatusReply, error) {
+	out, err := h.sessionService.GetUploadStatus(ctx, upload.UploadId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.StatusReply{
+		Status:   out.Status.String(),
+		Progress: uint32(out.Progress),
+		Message:  out.Message,
+	}, nil
+}
