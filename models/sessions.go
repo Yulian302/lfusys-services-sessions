@@ -1,6 +1,52 @@
 package models
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
+
+type UploadStatus int
+
+const (
+	Pending = iota
+	InProgress
+	Completed
+	Failed
+	Expired
+	Cancelled
+)
+
+var uploadStatusName = map[UploadStatus]string{
+	Pending:    "pending",
+	InProgress: "in_progress",
+	Completed:  "completed",
+	Failed:     "failed",
+	Expired:    "expired",
+	Cancelled:  "cancelled",
+}
+
+func (us UploadStatus) String() string {
+	return uploadStatusName[us]
+}
+
+func ParseUploadStatus(s string) (UploadStatus, error) {
+	switch s {
+	case uploadStatusName[Pending]:
+		return Pending, nil
+	case uploadStatusName[InProgress]:
+		return InProgress, nil
+	case uploadStatusName[Completed]:
+		return Completed, nil
+	case uploadStatusName[Failed]:
+		return Failed, nil
+	case uploadStatusName[Expired]:
+		return Expired, nil
+	case uploadStatusName[Cancelled]:
+		return Cancelled, nil
+	default:
+		return -1, fmt.Errorf("invalid upload status: %s", s)
+	}
+}
 
 // UploadSession represents a multipart upload session
 // Status values:
@@ -13,4 +59,10 @@ type UploadSession struct {
 	ExpirationTime time.Time `dynamodbav:"expiration_time"` // Session expires after 24 hours
 	CreatedAt      time.Time `dynamodbav:"created_at"`      // Session creation timestamp
 	Status         string    `dynamodbav:"status"`          // Current upload status
+}
+
+type UploadStatusResponse struct {
+	Status   UploadStatus `json:"status"`
+	Progress uint8        `json:"progress"`
+	Message  string       `json:"message"`
 }
