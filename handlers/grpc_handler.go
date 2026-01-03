@@ -25,7 +25,8 @@ func NewGrpcHandler(sessionService services.SessionService, uploadsUrl string) *
 }
 
 func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*pb.UploadReply, error) {
-	const chunkSize = 5 * 1024 * 1024           // 5 MB
+	// const chunkSize = 5 * 1024 * 1024           // 5 MB
+	const chunkSize = 140 * 1024                // 140 kB (dev)
 	const maxFileSize = 10 * 1024 * 1024 * 1024 // 10 GB
 	if req.FileSize > maxFileSize {
 		return nil, fmt.Errorf("file size exceeds 10GB limit")
