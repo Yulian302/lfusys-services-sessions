@@ -20,12 +20,12 @@ type UploadsNotifyReceiver interface {
 
 type UploadsNotifyReceiverImpl struct {
 	client       *sqs.Client
-	fileStore    store.UploadFileStore
+	fileStore    store.FileStore
 	sessionStore store.SessionStore
 	queueUrl     string
 }
 
-func NewUploadsNotifyReceiveImpl(client *sqs.Client, fileStore store.UploadFileStore, sessionStore store.SessionStore, queueUrl string) *UploadsNotifyReceiverImpl {
+func NewUploadsNotifyReceiveImpl(client *sqs.Client, fileStore store.FileStore, sessionStore store.SessionStore, queueUrl string) *UploadsNotifyReceiverImpl {
 	return &UploadsNotifyReceiverImpl{
 		client:       client,
 		fileStore:    fileStore,

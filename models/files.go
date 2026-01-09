@@ -11,3 +11,7 @@ type File struct {
 	Checksum    string    `dynamodbav:"checksum"`     // File checksum
 	CreatedAt   time.Time `dynamodbav:"created_at"`   // Time of creation
 }
+
+type FilesResponse struct {
+	Files []File
+}

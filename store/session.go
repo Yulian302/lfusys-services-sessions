@@ -87,8 +87,6 @@ func (s *SessionStoreImpl) GetStatus(ctx context.Context, uploadID string) (*mod
 	if out.Item == nil {
 		return nil, apperrors.ErrSessionNotFound
 	}
-	fmt.Println(out)
-	fmt.Println(out.Item)
 
 	var status models.UploadStatus
 	statusAttr, ok := out.Item["status"].(*types.AttributeValueMemberS)
