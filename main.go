@@ -50,7 +50,8 @@ func main() {
 	}()
 
 	sessionService := services.NewSessionServiceImpl(sessionStore)
-	grpcHandler := handlers.NewGrpcHandler(sessionService, cfg.ServiceConfig.UploadsURL)
+	fileService := services.NewFileServiceImpl(fileStore)
+	grpcHandler := handlers.NewGrpcHandler(sessionService, fileService, cfg.ServiceConfig.UploadsURL)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterUploaderServer(grpcServer, grpcHandler)
