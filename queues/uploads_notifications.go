@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"time"
 
+	"github.com/Yulian302/lfusys-services-commons/caching"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/Yulian302/lfusys-services-sessions/store"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -22,14 +25,16 @@ type UploadsNotifyReceiverImpl struct {
 	client       *sqs.Client
 	fileStore    store.FileStore
 	sessionStore store.SessionStore
+	cachingSvc   caching.CachingService
 	queueUrl     string
 }
 
-func NewUploadsNotifyReceiveImpl(client *sqs.Client, fileStore store.FileStore, sessionStore store.SessionStore, queueUrl string) *UploadsNotifyReceiverImpl {
+func NewUploadsNotifyReceiveImpl(client *sqs.Client, fileStore store.FileStore, sessionStore store.SessionStore, cachingSvc caching.CachingService, queueUrl string) *UploadsNotifyReceiverImpl {
 	return &UploadsNotifyReceiverImpl{
 		client:       client,
 		fileStore:    fileStore,
 		sessionStore: sessionStore,
+		cachingSvc:   cachingSvc,
 		queueUrl:     queueUrl,
 	}
 }
@@ -95,6 +100,12 @@ func (rc *UploadsNotifyReceiverImpl) handleMessage(ctx context.Context, msg type
 
 	if err := rc.fileStore.Create(ctx, file); err != nil {
 		return // retry
+	}
+
+	// invalidate cache
+	filesKey := fmt.Sprintf("user:files:%s", file.OwnerEmail)
+	if err = rc.cachingSvc.Delete(ctx, filesKey); err != nil {
+		log.Println("could not delete cached files: ", err.Error())
 	}
 
 	rc.deleteMessage(ctx, msg)
