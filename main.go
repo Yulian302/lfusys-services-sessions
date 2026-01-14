@@ -9,6 +9,7 @@ import (
 
 	common "github.com/Yulian302/lfusys-services-commons"
 	pb "github.com/Yulian302/lfusys-services-commons/api"
+	"github.com/Yulian302/lfusys-services-commons/caching"
 	"github.com/Yulian302/lfusys-services-sessions/handlers"
 	"github.com/Yulian302/lfusys-services-sessions/queues"
 	"github.com/Yulian302/lfusys-services-sessions/services"
@@ -17,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	_ "github.com/joho/godotenv/autoload"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
 
@@ -36,12 +38,23 @@ func main() {
 		log.Fatalf("failed to load aws config: %v", err)
 	}
 	client := dynamodb.NewFromConfig(awsCfg)
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisConfig.HOST,
+		Password: "",
+		DB:       0,
+	})
 	fileStore := store.NewDynamoDbFileStoreImpl(client, cfg.DynamoDBConfig.FilesTableName)
 	sessionStore := store.NewSessionStoreImpl(client, cfg.DynamoDBConfig.UploadsTableName)
 
+	var cachingSvc caching.CachingService
+	cachingSvc = caching.NewRedisCachingService(redisClient)
+	if redisClient == nil {
+		cachingSvc = caching.NewNullCachingService()
+	}
+
 	sqsClient := sqs.NewFromConfig(awsCfg)
 	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", cfg.AWSConfig.Region, cfg.AWSConfig.AccountID, cfg.ServiceConfig.UploadsNotificationsQueueName)
-	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(sqsClient, fileStore, sessionStore, queueUrl)
+	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(sqsClient, fileStore, sessionStore, cachingSvc, queueUrl)
 
 	go func() {
 		if err := uploadsReceiver.Poll(ctx); err != nil {
@@ -50,7 +63,7 @@ func main() {
 	}()
 
 	sessionService := services.NewSessionServiceImpl(sessionStore)
-	fileService := services.NewFileServiceImpl(fileStore)
+	fileService := services.NewFileServiceImpl(fileStore, cachingSvc)
 	grpcHandler := handlers.NewGrpcHandler(sessionService, fileService, cfg.ServiceConfig.UploadsURL)
 
 	grpcServer := grpc.NewServer()
