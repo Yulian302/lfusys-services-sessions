@@ -2,91 +2,41 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"net"
-	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	common "github.com/Yulian302/lfusys-services-commons"
-	pb "github.com/Yulian302/lfusys-services-commons/api"
-	"github.com/Yulian302/lfusys-services-commons/caching"
-	"github.com/Yulian302/lfusys-services-sessions/handlers"
-	"github.com/Yulian302/lfusys-services-sessions/queues"
-	"github.com/Yulian302/lfusys-services-sessions/services"
-	"github.com/Yulian302/lfusys-services-sessions/store"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/redis/go-redis/v9"
-	"google.golang.org/grpc"
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer stop()
+
+	app, err := SetupApp()
+	if err != nil {
+		log.Fatalf("failed to initialize app: %v", err)
+	}
+
+	go func() {
+		if err := app.Run(); err != nil {
+			log.Printf("server stopped: %v", err)
+		}
+	}()
+
+	log.Printf("Grpc server started at %v", app.Config.ServiceConfig.SessionGRPCAddr)
+
+	<-ctx.Done()
+
+	log.Println("shutdown signal received")
+	shutDownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cfg := common.LoadConfig()
-
-	if err := cfg.AWSConfig.ValidateSecrets(); err != nil {
-		log.Fatal("aws security credentials were not found")
+	if err := app.Shutdown(shutDownContext); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
 	}
 
-	// db client
-	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.AWSConfig.Region))
-	if err != nil {
-		log.Fatalf("failed to load aws config: %v", err)
-	}
-	client := dynamodb.NewFromConfig(awsCfg)
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisConfig.HOST,
-		Password: "",
-		DB:       0,
-	})
-	fileStore := store.NewDynamoDbFileStoreImpl(client, cfg.DynamoDBConfig.FilesTableName)
-	sessionStore := store.NewSessionStoreImpl(client, cfg.DynamoDBConfig.UploadsTableName)
+	log.Println("server exited properly")
 
-	var cachingSvc caching.CachingService
-	cachingSvc = caching.NewRedisCachingService(redisClient)
-	if redisClient == nil {
-		cachingSvc = caching.NewNullCachingService()
-	}
-
-	sqsClient := sqs.NewFromConfig(awsCfg)
-	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", cfg.AWSConfig.Region, cfg.AWSConfig.AccountID, cfg.ServiceConfig.UploadsNotificationsQueueName)
-	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(sqsClient, fileStore, sessionStore, cachingSvc, queueUrl)
-
-	go func() {
-		if err := uploadsReceiver.Poll(ctx); err != nil {
-			log.Printf("poller exited: %v", err)
-		}
-	}()
-
-	sessionService := services.NewSessionServiceImpl(sessionStore)
-	fileService := services.NewFileServiceImpl(fileStore, cachingSvc)
-	grpcHandler := handlers.NewGrpcHandler(sessionService, fileService, cfg.ServiceConfig.UploadsURL)
-
-	grpcServer := grpc.NewServer()
-	pb.RegisterUploaderServer(grpcServer, grpcHandler)
-
-	l, err := net.Listen("tcp", cfg.ServiceConfig.SessionGRPCAddr)
-	if err != nil {
-		log.Fatalf("grpc error: failed to listen to %v", cfg.ServiceConfig.SessionGRPCAddr)
-	}
-	defer l.Close()
-
-	log.Printf("Grpc server started at %v", cfg.ServiceConfig.SessionGRPCAddr)
-
-	go func() {
-		if err := grpcServer.Serve(l); err != nil {
-			log.Fatal("cannot start grpc server: ", err.Error())
-		}
-	}()
-
-	sig := make(chan os.Signal, 1)
-	<-sig
-	log.Println("shutdown signal received")
-
-	cancel()
-	grpcServer.GracefulStop()
 }

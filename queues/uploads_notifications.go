@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/Yulian302/lfusys-services-commons/caching"
@@ -18,7 +19,7 @@ import (
 )
 
 type UploadsNotifyReceiver interface {
-	Poll(ctx context.Context) error
+	pollLoop() error
 }
 
 type UploadsNotifyReceiverImpl struct {
@@ -27,31 +28,54 @@ type UploadsNotifyReceiverImpl struct {
 	sessionStore store.SessionStore
 	cachingSvc   caching.CachingService
 	queueUrl     string
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
-func NewUploadsNotifyReceiveImpl(client *sqs.Client, fileStore store.FileStore, sessionStore store.SessionStore, cachingSvc caching.CachingService, queueUrl string) *UploadsNotifyReceiverImpl {
+func NewUploadsNotifyReceiveImpl(
+	parent context.Context,
+	client *sqs.Client,
+	fileStore store.FileStore,
+	sessionStore store.SessionStore,
+	cachingSvc caching.CachingService,
+	queueUrl string,
+) *UploadsNotifyReceiverImpl {
+
+	ctx, cancel := context.WithCancel(parent)
+
 	return &UploadsNotifyReceiverImpl{
 		client:       client,
 		fileStore:    fileStore,
 		sessionStore: sessionStore,
 		cachingSvc:   cachingSvc,
 		queueUrl:     queueUrl,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
-func (rc *UploadsNotifyReceiverImpl) Poll(ctx context.Context) error {
+func (r *UploadsNotifyReceiverImpl) Start() {
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		_ = r.pollLoop()
+	}()
+}
 
+func (r *UploadsNotifyReceiverImpl) pollLoop() error {
 	for {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-r.ctx.Done():
+			return r.ctx.Err()
 		default:
 		}
 
-		out, err := rc.client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-			QueueUrl:            aws.String(rc.queueUrl),
+		out, err := r.client.ReceiveMessage(r.ctx, &sqs.ReceiveMessageInput{
+			QueueUrl:            aws.String(r.queueUrl),
 			MaxNumberOfMessages: 1,
-			WaitTimeSeconds:     20,
+			WaitTimeSeconds:     20, // long poll
 			VisibilityTimeout:   30,
 		})
 		if err != nil {
@@ -60,7 +84,7 @@ func (rc *UploadsNotifyReceiverImpl) Poll(ctx context.Context) error {
 		}
 
 		for _, msg := range out.Messages {
-			rc.handleMessage(ctx, msg)
+			r.handleMessage(r.ctx, msg)
 		}
 	}
 }
@@ -137,4 +161,21 @@ func buildFileFromSession(session models.UploadSession) (models.File, error) {
 
 	return file, nil
 
+}
+
+func (r *UploadsNotifyReceiverImpl) Shutdown(ctx context.Context) error {
+	r.cancel()
+
+	done := make(chan struct{})
+	go func() {
+		r.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
