@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
 	pb "github.com/Yulian302/lfusys-services-commons/api"
 	"github.com/Yulian302/lfusys-services-commons/config"
+	"github.com/Yulian302/lfusys-services-commons/health"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -16,10 +18,13 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
+	grpchealth "google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type App struct {
-	Server *grpc.Server
+	Server       *grpc.Server
+	HealthServer *grpchealth.Server
 
 	DynamoDB *dynamodb.Client
 	Redis    *redis.Client
@@ -74,7 +79,11 @@ func SetupApp() (*App, error) {
 }
 
 func (a *App) Run() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	a.Server = grpc.NewServer()
+	a.createHealthServer(ctx)
 
 	l, err := net.Listen("tcp", a.Config.ServiceConfig.SessionGRPCAddr)
 	if err != nil {
@@ -84,6 +93,49 @@ func (a *App) Run() error {
 	a.RegisterHandlers()
 
 	return a.Server.Serve(l)
+}
+
+func (a *App) createHealthServer(ctx context.Context) {
+	a.HealthServer = grpchealth.NewServer()
+
+	// start pessimistic
+	a.HealthServer.SetServingStatus(
+		"",
+		healthpb.HealthCheckResponse_NOT_SERVING,
+	)
+	healthpb.RegisterHealthServer(a.Server, a.HealthServer)
+
+	checks := []health.ReadinessCheck{
+		a.Services.Stores.files,
+		a.Services.Stores.sessions,
+	}
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				status := healthpb.HealthCheckResponse_SERVING
+
+				for _, c := range checks {
+					cctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+					err := c.IsReady(cctx)
+					cancel()
+
+					if err != nil {
+						status = healthpb.HealthCheckResponse_NOT_SERVING
+						break
+					}
+				}
+
+				a.HealthServer.SetServingStatus("", status)
+			}
+		}
+	}()
 }
 
 func initAWS(cfg config.AWSConfig) (aws.Config, error) {
