@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	apperrors "github.com/Yulian302/lfusys-services-commons/errors"
+	"github.com/Yulian302/lfusys-services-commons/health"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -18,11 +20,15 @@ type SessionStore interface {
 	CreateSession(ctx context.Context, uploadSession models.UploadSession) error
 	GetSession(ctx context.Context, uploadID string) (*models.UploadSession, error)
 	GetStatus(ctx context.Context, uploadID string) (*models.UploadStatusResponse, error)
+
+	health.ReadinessCheck
 }
 
 type SessionStoreImpl struct {
 	client    *dynamodb.Client
 	tableName string
+
+	health.ReadinessCheck
 }
 
 func NewSessionStoreImpl(client *dynamodb.Client, tableName string) *SessionStoreImpl {
@@ -30,6 +36,21 @@ func NewSessionStoreImpl(client *dynamodb.Client, tableName string) *SessionStor
 		client:    client,
 		tableName: tableName,
 	}
+}
+
+func (s *SessionStoreImpl) IsReady(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	_, err := s.client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
+		TableName: aws.String(s.tableName),
+	})
+
+	return err
+}
+
+func (s *SessionStoreImpl) Name() string {
+	return "UploadsStore[sessions]"
 }
 
 func (s *SessionStoreImpl) CreateSession(ctx context.Context, uploadSession models.UploadSession) error {

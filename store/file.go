@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"time"
 
+	"github.com/Yulian302/lfusys-services-commons/health"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -13,6 +15,8 @@ import (
 type FileStore interface {
 	Create(ctx context.Context, file models.File) error
 	Read(ctx context.Context, ownerEmail string) ([]models.File, error)
+
+	health.ReadinessCheck
 }
 
 type DynamoDbFileStoreImpl struct {
@@ -25,6 +29,21 @@ func NewDynamoDbFileStoreImpl(client *dynamodb.Client, tableName string) *Dynamo
 		client:    client,
 		tableName: tableName,
 	}
+}
+
+func (s *DynamoDbFileStoreImpl) IsReady(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	_, err := s.client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
+		TableName: aws.String(s.tableName),
+	})
+
+	return err
+}
+
+func (s *DynamoDbFileStoreImpl) Name() string {
+	return "FileStore[files]"
 }
 
 func (s *DynamoDbFileStoreImpl) Create(ctx context.Context, file models.File) error {
