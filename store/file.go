@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Yulian302/lfusys-services-commons/errors"
 	"github.com/Yulian302/lfusys-services-commons/health"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -13,6 +14,7 @@ import (
 )
 
 type FileStore interface {
+	Get(ctx context.Context, uploadId string) (*models.File, error)
 	Create(ctx context.Context, file models.File) error
 	Read(ctx context.Context, ownerEmail string) ([]models.File, error)
 
@@ -44,6 +46,29 @@ func (s *DynamoDbFileStoreImpl) IsReady(ctx context.Context) error {
 
 func (s *DynamoDbFileStoreImpl) Name() string {
 	return "FileStore[files]"
+}
+
+func (s *DynamoDbFileStoreImpl) Get(ctx context.Context, uploadId string) (*models.File, error) {
+	out, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(s.tableName),
+		Key: map[string]types.AttributeValue{
+			"upload_id": &types.AttributeValueMemberS{Value: uploadId},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if out.Item == nil {
+		return nil, errors.ErrSessionNotFound
+	}
+
+	var file models.File
+	if err = attributevalue.UnmarshalMap(out.Item, &file); err != nil {
+		return nil, err
+	}
+
+	return &file, nil
 }
 
 func (s *DynamoDbFileStoreImpl) Create(ctx context.Context, file models.File) error {
