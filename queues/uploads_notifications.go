@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Yulian302/lfusys-services-commons/caching"
+	cerr "github.com/Yulian302/lfusys-services-commons/errors"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/Yulian302/lfusys-services-sessions/store"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -112,6 +113,11 @@ func (rc *UploadsNotifyReceiverImpl) handleMessage(ctx context.Context, msg type
 	}
 
 	session, err := rc.sessionStore.GetSession(ctx, evt.UploadId)
+	if errors.Is(err, cerr.ErrSessionNotFound) {
+		// already processed previously
+		rc.deleteMessage(ctx, msg)
+		return
+	}
 	if err != nil {
 		return // retry
 	}
@@ -124,6 +130,12 @@ func (rc *UploadsNotifyReceiverImpl) handleMessage(ctx context.Context, msg type
 
 	if err := rc.fileStore.Create(ctx, file); err != nil {
 		return // retry
+	}
+
+	// delete upload session
+	err = rc.sessionStore.Delete(ctx, evt.UploadId)
+	if err != nil {
+		log.Printf("could not delete upload session: %v", err)
 	}
 
 	// invalidate cache

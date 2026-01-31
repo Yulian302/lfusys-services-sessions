@@ -49,9 +49,9 @@ func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 		FileSize:    req.FileSize,
 		TotalChunks: uint32(totalChunks),
 		// UploadedChunks: []int64{},
-		ExpirationTime: time.Now().Add(2 * time.Hour), // session should expire in 2 hours
-		CreatedAt:      time.Now(),
-		Status:         "pending",
+		ExpiresAt: time.Now().Add(3 * time.Hour).Unix(),
+		CreatedAt: time.Now(),
+		Status:    "pending",
 	}
 
 	err := h.sessionService.CreateUpload(ctx, uploadSession)

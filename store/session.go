@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	apperrors "github.com/Yulian302/lfusys-services-commons/errors"
+	cerr "github.com/Yulian302/lfusys-services-commons/errors"
 	"github.com/Yulian302/lfusys-services-commons/health"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,6 +20,7 @@ type SessionStore interface {
 	CreateSession(ctx context.Context, uploadSession models.UploadSession) error
 	GetSession(ctx context.Context, uploadID string) (*models.UploadSession, error)
 	GetStatus(ctx context.Context, uploadID string) (*models.UploadStatusResponse, error)
+	Delete(ctx context.Context, uploadID string) error
 
 	health.ReadinessCheck
 }
@@ -75,8 +76,12 @@ func (s *SessionStoreImpl) GetSession(ctx context.Context, uploadID string) (*mo
 			},
 		},
 	})
-	if err != nil || out == nil {
+	if err != nil {
 		return nil, err
+	}
+
+	if out.Item == nil {
+		return nil, cerr.ErrSessionNotFound
 	}
 
 	var session models.UploadSession
@@ -106,7 +111,7 @@ func (s *SessionStoreImpl) GetStatus(ctx context.Context, uploadID string) (*mod
 	}
 
 	if out.Item == nil {
-		return nil, apperrors.ErrSessionNotFound
+		return nil, cerr.ErrSessionNotFound
 	}
 
 	var status models.UploadStatus
@@ -152,4 +157,16 @@ func (s *SessionStoreImpl) GetStatus(ctx context.Context, uploadID string) (*mod
 		Progress: progress,
 		Message:  "",
 	}, nil
+}
+
+func (s *SessionStoreImpl) Delete(ctx context.Context, uploadID string) error {
+	_, err := s.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(s.tableName),
+		Key: map[string]types.AttributeValue{
+			"upload_id": &types.AttributeValueMemberS{Value: uploadID},
+		},
+		ConditionExpression: aws.String("attribute_exists(upload_id)"),
+	})
+
+	return err
 }
