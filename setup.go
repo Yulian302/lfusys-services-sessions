@@ -8,6 +8,7 @@ import (
 	"net"
 	"time"
 
+	common "github.com/Yulian302/lfusys-services-commons"
 	pb "github.com/Yulian302/lfusys-services-commons/api"
 	"github.com/Yulian302/lfusys-services-commons/config"
 	"github.com/Yulian302/lfusys-services-commons/health"
@@ -16,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	grpchealth "google.golang.org/grpc/health"
@@ -73,6 +75,16 @@ func SetupApp() (*App, error) {
 		AwsConfig: awsCfg,
 	}
 
+	if app.Config.Tracing {
+		tp, err := common.InitTracer(context.Background(), "sessions", cfg.TracingAddr)
+		if err != nil {
+			log.Fatalf("failed to start tracing: %v", err)
+		}
+		log.Println("tracing in progress...")
+
+		app.TracerProvider = tp
+	}
+
 	app.Services = BuildServices(app)
 
 	return app, nil
@@ -82,7 +94,9 @@ func (a *App) Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	a.Server = grpc.NewServer()
+	a.Server = grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	)
 	a.createHealthServer(ctx)
 
 	l, err := net.Listen("tcp", a.Config.ServiceConfig.SessionGRPCAddr)
