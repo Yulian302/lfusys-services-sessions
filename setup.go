@@ -9,7 +9,7 @@ import (
 	"time"
 
 	common "github.com/Yulian302/lfusys-services-commons"
-	pb "github.com/Yulian302/lfusys-services-commons/api"
+	pb "github.com/Yulian302/lfusys-services-commons/api/uploader/v1"
 	"github.com/Yulian302/lfusys-services-commons/config"
 	"github.com/Yulian302/lfusys-services-commons/health"
 	"github.com/aws/aws-sdk-go-v2/aws"
