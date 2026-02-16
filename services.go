@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	pb "github.com/Yulian302/lfusys-services-commons/api"
+	pb "github.com/Yulian302/lfusys-services-commons/api/uploader/v1"
 	"github.com/Yulian302/lfusys-services-commons/caching"
 	"github.com/Yulian302/lfusys-services-sessions/handlers"
 	"github.com/Yulian302/lfusys-services-sessions/queues"
