@@ -14,6 +14,7 @@ import (
 
 type FileService interface {
 	GetFiles(ctx context.Context, email string) (*models.FilesResponse, error)
+	Delete(ctx context.Context, fileId string) error
 }
 
 type FileServiceImpl struct {
@@ -58,4 +59,19 @@ func (svc *FileServiceImpl) GetFiles(ctx context.Context, email string) (*models
 	return &models.FilesResponse{
 		Files: files,
 	}, nil
+}
+
+func (svc *FileServiceImpl) Delete(ctx context.Context, fileId string) error {
+	file, err := svc.fileStore.GetById(ctx, fileId)
+	if err != nil {
+		return err
+	}
+	err = svc.fileStore.Delete(ctx, fileId)
+	if err != nil {
+		return err
+	}
+
+	filesKey := fmt.Sprintf("user:files:%s", file.OwnerEmail)
+	svc.cachingSvc.Delete(ctx, filesKey)
+	return nil
 }
