@@ -16,8 +16,10 @@ import (
 
 type FileStore interface {
 	Get(ctx context.Context, uploadId string) (*models.File, error)
+	GetById(ctx context.Context, id string) (*models.File, error)
 	Create(ctx context.Context, file models.File) error
 	Read(ctx context.Context, ownerEmail string) ([]models.File, error)
+	Delete(ctx context.Context, fileId string) error
 
 	health.ReadinessCheck
 }
@@ -91,6 +93,40 @@ func (s *DynamoDbFileStoreImpl) Get(ctx context.Context, uploadId string) (*mode
 	return &file, nil
 }
 
+func (s *DynamoDbFileStoreImpl) GetById(ctx context.Context, id string) (*models.File, error) {
+	var file models.File
+
+	err := retries.Retry(
+		ctx,
+		retries.DefaultAttempts,
+		retries.DefaultBaseDelay,
+		func() error {
+			out, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
+				TableName: aws.String(s.tableName),
+				Key: map[string]types.AttributeValue{
+					"file_id": &types.AttributeValueMemberS{Value: id},
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			if out.Item == nil {
+				return apperror.ErrFileNotFound
+			}
+
+			return attributevalue.UnmarshalMap(out.Item, &file)
+		},
+		retries.IsRetriableDbError,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &file, nil
+}
+
 func (s *DynamoDbFileStoreImpl) Create(ctx context.Context, file models.File) error {
 	fileItem, err := attributevalue.MarshalMap(file)
 	if err != nil {
@@ -143,4 +179,23 @@ func (s *DynamoDbFileStoreImpl) Read(ctx context.Context, ownerEmail string) ([]
 	}
 
 	return files, nil
+}
+
+func (s *DynamoDbFileStoreImpl) Delete(ctx context.Context, fileId string) error {
+	return retries.Retry(
+		ctx,
+		retries.DefaultAttempts,
+		retries.DefaultBaseDelay,
+		func() error {
+			_, err := s.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+				TableName: aws.String(s.tableName),
+				Key: map[string]types.AttributeValue{
+					"file_id": &types.AttributeValueMemberS{Value: fileId},
+				},
+				ReturnValues: types.ReturnValueAllOld,
+			})
+			return err
+		},
+		retries.IsRetriableDbError,
+	)
 }

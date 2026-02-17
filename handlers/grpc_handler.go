@@ -9,6 +9,7 @@ import (
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/Yulian302/lfusys-services-sessions/services"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -28,14 +29,12 @@ func NewGrpcHandler(sessSvc services.SessionService, fileSvc services.FileServic
 }
 
 func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*pb.UploadReply, error) {
-	// const chunkSize = 5 * 1024 * 1024           // 5 MB
-	const chunkSize = 140 * 1024                // 140 kB (dev)
 	const maxFileSize = 10 * 1024 * 1024 * 1024 // 10 GB
 	if req.FileSize > maxFileSize {
 		return nil, fmt.Errorf("file size exceeds 10GB limit")
 	}
 
-	totalChunks := (req.FileSize + chunkSize - 1) / chunkSize
+	totalChunks := (req.FileSize + req.ChunkSize - 1) / req.ChunkSize
 	uuidGen := uuid.New()
 	uploadId := uuidGen.String()
 
@@ -92,4 +91,13 @@ func (h *GrpcHandler) GetFiles(ctx context.Context, userInfo *pb.UserInfo) (*pb.
 	return &pb.FilesReply{
 		Files: pbFiles,
 	}, nil
+}
+
+func (h *GrpcHandler) DeleteFile(ctx context.Context, req *pb.FileDeleteRequest) (*emptypb.Empty, error) {
+	err := h.fileService.Delete(ctx, req.FileId)
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
 }
