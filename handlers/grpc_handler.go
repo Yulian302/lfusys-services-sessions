@@ -6,6 +6,7 @@ import (
 	"time"
 
 	pb "github.com/Yulian302/lfusys-services-commons/api/uploader/v1"
+	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/Yulian302/lfusys-services-sessions/services"
 	"github.com/google/uuid"
@@ -18,19 +19,27 @@ type GrpcHandler struct {
 	fileService    services.FileService
 	pb.UnimplementedUploaderServer
 	uploadsUrl string
+
+	logger logger.Logger
 }
 
-func NewGrpcHandler(sessSvc services.SessionService, fileSvc services.FileService, uploadsUrl string) *GrpcHandler {
+func NewGrpcHandler(sessSvc services.SessionService, fileSvc services.FileService, uploadsUrl string, l logger.Logger) *GrpcHandler {
 	return &GrpcHandler{
 		sessionService: sessSvc,
 		fileService:    fileSvc,
 		uploadsUrl:     uploadsUrl,
+		logger:         l,
 	}
 }
 
 func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*pb.UploadReply, error) {
 	const maxFileSize = 10 * 1024 * 1024 * 1024 // 10 GB
 	if req.FileSize > maxFileSize {
+		h.logger.Warn("start upload validation failed",
+			"email", req.UserEmail,
+			"file_size", req.FileSize,
+			"reason", "file_size_exceeded",
+		)
 		return nil, fmt.Errorf("file size exceeds 10GB limit")
 	}
 
@@ -51,8 +60,20 @@ func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 
 	err := h.sessionService.CreateUpload(ctx, uploadSession)
 	if err != nil {
+		h.logger.Error("start upload failed",
+			"email", req.UserEmail,
+			"upload_id", uploadId,
+			"error", err,
+		)
 		return nil, err
 	}
+
+	h.logger.Info("upload started",
+		"email", req.UserEmail,
+		"upload_id", uploadId,
+		"total_chunks", totalChunks,
+		"file_size", req.FileSize,
+	)
 
 	return &pb.UploadReply{TotalChunks: uint32(totalChunks), UploadId: uploadId}, nil
 }
@@ -60,8 +81,19 @@ func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 func (h *GrpcHandler) GetUploadStatus(ctx context.Context, upload *pb.UploadID) (*pb.StatusReply, error) {
 	out, err := h.sessionService.GetUploadStatus(ctx, upload.UploadId)
 	if err != nil {
+		h.logger.Error("get upload status failed",
+			"upload_id", upload.UploadId,
+			"error", err,
+		)
 		return nil, err
 	}
+
+	h.logger.Debug("upload status retrieved",
+		"upload_id", upload.UploadId,
+		"status", out.Status,
+		"progress", out.Progress,
+	)
+
 	return &pb.StatusReply{
 		Status:   out.Status.String(),
 		Progress: uint32(out.Progress),
@@ -72,6 +104,10 @@ func (h *GrpcHandler) GetUploadStatus(ctx context.Context, upload *pb.UploadID) 
 func (h *GrpcHandler) GetFiles(ctx context.Context, userInfo *pb.UserInfo) (*pb.FilesReply, error) {
 	filesResponse, err := h.fileService.GetFiles(ctx, userInfo.Email)
 	if err != nil {
+		h.logger.Error("get files failed",
+			"email", userInfo.Email,
+			"error", err,
+		)
 		return nil, err
 	}
 
@@ -88,6 +124,11 @@ func (h *GrpcHandler) GetFiles(ctx context.Context, userInfo *pb.UserInfo) (*pb.
 		}
 	}
 
+	h.logger.Debug("files retrieved",
+		"email", userInfo.Email,
+		"file_count", len(filesResponse.Files),
+	)
+
 	return &pb.FilesReply{
 		Files: pbFiles,
 	}, nil
@@ -96,8 +137,16 @@ func (h *GrpcHandler) GetFiles(ctx context.Context, userInfo *pb.UserInfo) (*pb.
 func (h *GrpcHandler) DeleteFile(ctx context.Context, req *pb.FileDeleteRequest) (*emptypb.Empty, error) {
 	err := h.fileService.Delete(ctx, req.FileId)
 	if err != nil {
+		h.logger.Error("delete file failed",
+			"file_id", req.FileId,
+			"error", err,
+		)
 		return nil, err
 	}
+
+	h.logger.Info("file deleted",
+		"file_id", req.FileId,
+	)
 
 	return &emptypb.Empty{}, nil
 }
