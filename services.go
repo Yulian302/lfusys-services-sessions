@@ -42,14 +42,14 @@ func BuildServices(app *App) *Services {
 	if app.Redis == nil {
 		cachingSvc = caching.NewNullCachingService()
 	}
-	sessSvc := services.NewSessionServiceImpl(sessStore)
-	fileSvc := services.NewFileServiceImpl(fileStore, cachingSvc)
+	sessSvc := services.NewSessionServiceImpl(sessStore, app.Logger)
+	fileSvc := services.NewFileServiceImpl(fileStore, cachingSvc, app.Logger)
 
 	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", app.Config.AWSConfig.Region, app.Config.AWSConfig.AccountID, app.Config.ServiceConfig.UploadsNotificationsQueueName)
 	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, fileStore, sessStore, cachingSvc, queueUrl)
 	go uploadsReceiver.Start()
 
-	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, app.Config.ServiceConfig.UploadsURL)
+	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, app.Config.ServiceConfig.UploadsURL, app.Logger)
 
 	return &Services{
 		Sessions: sessSvc,

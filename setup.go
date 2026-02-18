@@ -11,6 +11,7 @@ import (
 	common "github.com/Yulian302/lfusys-services-commons"
 	pb "github.com/Yulian302/lfusys-services-commons/api/uploader/v1"
 	"github.com/Yulian302/lfusys-services-commons/config"
+	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-commons/health"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -37,6 +38,7 @@ type App struct {
 
 	Services       *Services
 	TracerProvider *trace.TracerProvider
+	Logger         logger.Logger
 }
 
 func SetupApp() (*App, error) {
@@ -66,6 +68,8 @@ func SetupApp() (*App, error) {
 		return nil, errors.New("could not init sqs")
 	}
 
+	appLogger := logger.NewSlogLogger(logger.CreateAppLogger(cfg.Env))
+
 	app := &App{
 		DynamoDB: db,
 		Redis:    rdb,
@@ -73,6 +77,7 @@ func SetupApp() (*App, error) {
 
 		Config:    cfg,
 		AwsConfig: awsCfg,
+		Logger:    appLogger,
 	}
 
 	if app.Config.Tracing {
