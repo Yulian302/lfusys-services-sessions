@@ -4,15 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"time"
 
 	common "github.com/Yulian302/lfusys-services-commons"
 	pb "github.com/Yulian302/lfusys-services-commons/api/uploader/v1"
 	"github.com/Yulian302/lfusys-services-commons/config"
-	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-commons/health"
+	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -83,9 +82,9 @@ func SetupApp() (*App, error) {
 	if app.Config.Tracing {
 		tp, err := common.InitTracer(context.Background(), "sessions", cfg.TracingAddr)
 		if err != nil {
-			log.Fatalf("failed to start tracing: %v", err)
+			app.Logger.Error("tracing start failed", "err", err.Error())
 		}
-		log.Println("tracing in progress...")
+		app.Logger.Info("tracing in progress...")
 
 		app.TracerProvider = tp
 	}
@@ -185,7 +184,7 @@ func initSqs(cfg aws.Config) *sqs.Client {
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
-	log.Println("starting graceful shutdown")
+	a.Logger.Info("starting graceful shutdown")
 
 	if a.Server != nil {
 		done := make(chan struct{})
@@ -203,23 +202,23 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	if a.Services != nil {
 		if err := a.Services.Shutdown(ctx); err != nil {
-			log.Printf("services shutdown error: %v", err)
+			a.Logger.Error("services shutdown failed", "err", err.Error())
 		}
 	}
 
 	if a.Redis != nil {
 		if err := a.Redis.Close(); err != nil {
-			log.Printf("redis close error: %v", err)
+			a.Logger.Error("redis close failed", "err", err.Error())
 		}
 	}
 
 	if a.TracerProvider != nil {
 		if err := a.TracerProvider.Shutdown(ctx); err != nil {
-			log.Printf("tracer shutdown error: %v", err)
+			a.Logger.Error("tracer shutdown failed", "err", err.Error())
 		}
 	}
 
-	log.Println("graceful shutdown complete")
+	a.Logger.Info("graceful shutdown complete")
 	return nil
 }
 

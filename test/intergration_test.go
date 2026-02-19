@@ -9,6 +9,7 @@ import (
 
 	"github.com/Yulian302/lfusys-services-commons/caching"
 	cerr "github.com/Yulian302/lfusys-services-commons/errors"
+	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/Yulian302/lfusys-services-sessions/queues"
 	"github.com/Yulian302/lfusys-services-sessions/store"
@@ -97,6 +98,7 @@ func TestUploadCompleted_DeletesSession(t *testing.T) {
 		sessionStore,
 		caching.NewNullCachingService(),
 		env.QueueURL, // MUST be real QueueURL
+		logger.NullLogger{},
 	)
 
 	go receiver.Start()
