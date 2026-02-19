@@ -41,7 +41,7 @@ func BuildServices(app *App) *Services {
 	sessStore := store.NewSessionStoreImpl(app.DynamoDB, app.Config.UploadsTableName)
 
 	var cachingSvc caching.CachingService
-	cachingSvc = caching.NewRedisCachingService(app.Redis)
+	cachingSvc = caching.NewRedisCachingService(app.Redis, app.Logger)
 	if app.Redis == nil {
 		cachingSvc = caching.NewNullCachingService()
 	}
@@ -49,10 +49,12 @@ func BuildServices(app *App) *Services {
 	fileSvc := services.NewFileServiceImpl(fileStore, cachingSvc, app.Logger)
 
 	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", app.Config.AWSConfig.Region, app.Config.AWSConfig.AccountID, app.Config.ServiceConfig.UploadsNotificationsQueueName)
-	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, fileStore, sessStore, cachingSvc, queueUrl, logger.NullLogger{})
+	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, fileStore, sessStore, cachingSvc, queueUrl, app.Logger)
 	go uploadsReceiver.Start()
 
 	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, app.Config.ServiceConfig.UploadsURL, app.Logger)
+
+	app.Logger.Info("sessions services initialized successfully")
 
 	return &Services{
 		Sessions: sessSvc,

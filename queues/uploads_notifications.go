@@ -62,6 +62,9 @@ func NewUploadsNotifyReceiveImpl(
 }
 
 func (r *UploadsNotifyReceiverImpl) Start() {
+	r.logger.Info("starting uploads notification receiver",
+		"queue_url", r.queueUrl,
+	)
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
