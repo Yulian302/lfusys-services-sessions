@@ -135,7 +135,7 @@ func (h *GrpcHandler) GetFiles(ctx context.Context, userInfo *pb.UserInfo) (*pb.
 }
 
 func (h *GrpcHandler) DeleteFile(ctx context.Context, req *pb.FileDeleteRequest) (*emptypb.Empty, error) {
-	err := h.fileService.Delete(ctx, req.FileId)
+	err := h.fileService.Delete(ctx, req.FileId, req.OwnerEmail)
 	if err != nil {
 		h.logger.Error("delete file failed",
 			"file_id", req.FileId,

@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"time"
 
-	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-commons/caching"
+	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/Yulian302/lfusys-services-sessions/store"
 )
 
 type FileService interface {
 	GetFiles(ctx context.Context, email string) (*models.FilesResponse, error)
-	Delete(ctx context.Context, fileId string) error
+	Delete(ctx context.Context, fileId, ownerEmail string) error
 }
 
 type FileServiceImpl struct {
@@ -85,7 +85,7 @@ func (svc *FileServiceImpl) GetFiles(ctx context.Context, email string) (*models
 	}, nil
 }
 
-func (svc *FileServiceImpl) Delete(ctx context.Context, fileId string) error {
+func (svc *FileServiceImpl) Delete(ctx context.Context, fileId, ownerEmail string) error {
 	file, err := svc.fileStore.GetById(ctx, fileId)
 	if err != nil {
 		svc.logger.Error("failed to get file for deletion",
@@ -94,7 +94,7 @@ func (svc *FileServiceImpl) Delete(ctx context.Context, fileId string) error {
 		)
 		return err
 	}
-	err = svc.fileStore.Delete(ctx, fileId)
+	err = svc.fileStore.Delete(ctx, fileId, ownerEmail)
 	if err != nil {
 		svc.logger.Error("failed to delete file",
 			"file_id", fileId,
