@@ -32,6 +32,8 @@ func (svc *SessionServiceImpl) CreateUpload(ctx context.Context, uploadSession m
 		svc.logger.Error("failed to create upload session",
 			"upload_id", uploadSession.UploadId,
 			"email", uploadSession.UserEmail,
+			"file_name", uploadSession.FileName,
+			"file_type", uploadSession.FileType,
 			"file_size", uploadSession.FileSize,
 			"error", err,
 		)
@@ -41,6 +43,8 @@ func (svc *SessionServiceImpl) CreateUpload(ctx context.Context, uploadSession m
 	svc.logger.Info("upload session created successfully",
 		"upload_id", uploadSession.UploadId,
 		"email", uploadSession.UserEmail,
+		"file_name", uploadSession.FileName,
+		"file_type", uploadSession.FileType,
 		"file_size", uploadSession.FileSize,
 		"total_chunks", uploadSession.TotalChunks,
 	)

@@ -53,9 +53,11 @@ func ParseUploadStatus(s string) (UploadStatus, error) {
 type UploadSession struct {
 	UploadId    string `dynamodbav:"upload_id"`    // Unique identifier for upload session
 	UserEmail   string `dynamodbav:"user_email"`   // Email(id) of user who owns this upload
+	FileName    string `dynamodbav:"file_name"`    // File name
+	FileType    string `dynamodbav:"file_type"`    // File type
 	FileSize    uint64 `dynamodbav:"file_size"`    // Total file size in bytes (max 10GB)
 	TotalChunks uint32 `dynamodbav:"total_chunks"` // Number of 5MB chunks required
-	// UploadedChunks []int64   `dynamodbav:"uploaded_chunks,numberset"` // Bitmask of uploaded chunks (in bytes)
+	// UploadedChunks []int64   `dynamodbav:"uploaded_chunks,numberset"` // Bitmask of uploaded chunks (in bytes), created on a fly
 	ExpiresAt int64     `dynamodbav:"expires_at"` // Session expires in 3 hours
 	CreatedAt time.Time `dynamodbav:"created_at"` // Session creation timestamp
 	Status    string    `dynamodbav:"status"`     // Current upload status

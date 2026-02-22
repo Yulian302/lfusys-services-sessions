@@ -15,20 +15,22 @@ import (
 )
 
 type GrpcHandler struct {
-	sessionService services.SessionService
-	fileService    services.FileService
+	sessionService   services.SessionService
+	fileService      services.FileService
+	uploadCompletion services.UploadCompletionService
 	pb.UnimplementedUploaderServer
 	uploadsUrl string
 
 	logger logger.Logger
 }
 
-func NewGrpcHandler(sessSvc services.SessionService, fileSvc services.FileService, uploadsUrl string, l logger.Logger) *GrpcHandler {
+func NewGrpcHandler(sessSvc services.SessionService, fileSvc services.FileService, uploadCompletion services.UploadCompletionService, uploadsUrl string, l logger.Logger) *GrpcHandler {
 	return &GrpcHandler{
-		sessionService: sessSvc,
-		fileService:    fileSvc,
-		uploadsUrl:     uploadsUrl,
-		logger:         l,
+		sessionService:   sessSvc,
+		fileService:      fileSvc,
+		uploadCompletion: uploadCompletion,
+		uploadsUrl:       uploadsUrl,
+		logger:           l,
 	}
 }
 
@@ -37,6 +39,8 @@ func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 	if req.FileSize > maxFileSize {
 		h.logger.Warn("start upload validation failed",
 			"email", req.UserEmail,
+			"file_name", req.FileName,
+			"file_type", req.FileType,
 			"file_size", req.FileSize,
 			"reason", "file_size_exceeded",
 		)
@@ -50,6 +54,8 @@ func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 	var uploadSession models.UploadSession = models.UploadSession{
 		UploadId:    uploadId,
 		UserEmail:   req.UserEmail,
+		FileName:    req.FileName,
+		FileType:    req.FileType,
 		FileSize:    req.FileSize,
 		TotalChunks: uint32(totalChunks),
 		// UploadedChunks: []int64{},
@@ -72,6 +78,8 @@ func (h *GrpcHandler) StartUpload(ctx context.Context, req *pb.UploadRequest) (*
 		"email", req.UserEmail,
 		"upload_id", uploadId,
 		"total_chunks", totalChunks,
+		"file_name", req.FileName,
+		"file_type", req.FileType,
 		"file_size", req.FileSize,
 	)
 
@@ -117,6 +125,8 @@ func (h *GrpcHandler) GetFiles(ctx context.Context, userInfo *pb.UserInfo) (*pb.
 			Id:          f.FileId,
 			UploadId:    f.UploadId,
 			OwnerEmail:  f.OwnerEmail,
+			Name:        f.Name,
+			Type:        f.Type,
 			Size:        f.Size,
 			TotalChunks: f.TotalChunks,
 			Checksum:    f.Checksum,
@@ -134,8 +144,27 @@ func (h *GrpcHandler) GetFiles(ctx context.Context, userInfo *pb.UserInfo) (*pb.
 	}, nil
 }
 
+func (h *GrpcHandler) GetFileById(ctx context.Context, req *pb.FileByIdRequest) (*pb.File, error) {
+	file, err := h.fileService.GetFileById(ctx, req.Email, req.FileId)
+	if err != nil {
+		return &pb.File{}, err
+	}
+
+	return &pb.File{
+		Id:          file.FileId,
+		UploadId:    file.UploadId,
+		OwnerEmail:  file.OwnerEmail,
+		Name:        file.Name,
+		Type:        file.Type,
+		Size:        file.Size,
+		TotalChunks: file.TotalChunks,
+		Checksum:    file.Checksum,
+		CreatedAt:   timestamppb.New(file.CreatedAt),
+	}, nil
+}
+
 func (h *GrpcHandler) DeleteFile(ctx context.Context, req *pb.FileDeleteRequest) (*emptypb.Empty, error) {
-	err := h.fileService.Delete(ctx, req.FileId)
+	err := h.fileService.Delete(ctx, req.FileId, req.OwnerEmail)
 	if err != nil {
 		h.logger.Error("delete file failed",
 			"file_id", req.FileId,
@@ -149,4 +178,22 @@ func (h *GrpcHandler) DeleteFile(ctx context.Context, req *pb.FileDeleteRequest)
 	)
 
 	return &emptypb.Empty{}, nil
+}
+
+func (h *GrpcHandler) GetDownUrl(ctx context.Context, req *pb.FileDownUrlRequest) (*pb.FileDownUrlReply, error) {
+	fileId := req.FileId
+	key := fmt.Sprintf("files/%s", fileId)
+
+	url, err := h.uploadCompletion.GenerateDownloadUrl(ctx, key, 5*time.Minute)
+	if err != nil {
+		h.logger.Error("get file download url failed",
+			"file_id", fileId,
+			"error", err,
+		)
+		return &pb.FileDownUrlReply{}, err
+	}
+
+	return &pb.FileDownUrlReply{
+		Url: url,
+	}, nil
 }

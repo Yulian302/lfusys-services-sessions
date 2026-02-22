@@ -19,7 +19,7 @@ type FileStore interface {
 	GetById(ctx context.Context, id string) (*models.File, error)
 	Create(ctx context.Context, file models.File) error
 	Read(ctx context.Context, ownerEmail string) ([]models.File, error)
-	Delete(ctx context.Context, fileId string) error
+	Delete(ctx context.Context, fileId, ownerEmail string) error
 
 	health.ReadinessCheck
 }
@@ -181,7 +181,7 @@ func (s *DynamoDbFileStoreImpl) Read(ctx context.Context, ownerEmail string) ([]
 	return files, nil
 }
 
-func (s *DynamoDbFileStoreImpl) Delete(ctx context.Context, fileId string) error {
+func (s *DynamoDbFileStoreImpl) Delete(ctx context.Context, fileId, ownerEmail string) error {
 	return retries.Retry(
 		ctx,
 		retries.DefaultAttempts,
@@ -191,6 +191,10 @@ func (s *DynamoDbFileStoreImpl) Delete(ctx context.Context, fileId string) error
 				TableName: aws.String(s.tableName),
 				Key: map[string]types.AttributeValue{
 					"file_id": &types.AttributeValueMemberS{Value: fileId},
+				},
+				ConditionExpression: aws.String("owner_email = :e"),
+				ExpressionAttributeValues: map[string]types.AttributeValue{
+					":e": &types.AttributeValueMemberS{Value: ownerEmail},
 				},
 				ReturnValues: types.ReturnValueAllOld,
 			})

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -16,27 +16,27 @@ func main() {
 
 	app, err := SetupApp()
 	if err != nil {
-		log.Fatalf("failed to initialize app: %v", err)
+		app.Logger.Error("app initialization failed", "reason", err.Error())
+		os.Exit(1)
 	}
 
 	go func() {
 		if err := app.Run(); err != nil {
-			log.Printf("server stopped: %v", err)
+			app.Logger.Error("server stopped", "err", err.Error())
 		}
 	}()
 
-	log.Printf("Grpc server started at %v", app.Config.ServiceConfig.SessionGRPCAddr)
+	app.Logger.Info("gRPC server started at %v", app.Config.ServiceConfig.SessionGRPCAddr)
 
 	<-ctx.Done()
 
-	log.Println("shutdown signal received")
+	app.Logger.Info("shutdown signal received")
 	shutDownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := app.Shutdown(shutDownContext); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		app.Logger.Error("graceful shutdown failed", "err", err.Error())
 	}
 
-	log.Println("server exited properly")
-
+	app.Logger.Info("server exited properly")
 }

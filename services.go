@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 
 	pb "github.com/Yulian302/lfusys-services-commons/api/uploader/v1"
 	"github.com/Yulian302/lfusys-services-commons/caching"
+	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-sessions/handlers"
 	"github.com/Yulian302/lfusys-services-sessions/queues"
 	"github.com/Yulian302/lfusys-services-sessions/services"
@@ -16,6 +16,8 @@ import (
 type Stores struct {
 	files    store.FileStore
 	sessions store.SessionStore
+
+	logger logger.Logger
 }
 
 type Services struct {
@@ -26,6 +28,7 @@ type Services struct {
 	Stores *Stores
 
 	UploadHandler pb.UploaderServer
+	logger        logger.Logger
 }
 
 type Shutdowner interface {
@@ -36,20 +39,24 @@ func BuildServices(app *App) *Services {
 
 	fileStore := store.NewDynamoDbFileStoreImpl(app.DynamoDB, app.Config.DynamoDBConfig.FilesTableName)
 	sessStore := store.NewSessionStoreImpl(app.DynamoDB, app.Config.UploadsTableName)
+	fileStorage := store.NewS3FileStorageImpl(app.S3, app.Config.BucketName, app.Logger)
 
 	var cachingSvc caching.CachingService
-	cachingSvc = caching.NewRedisCachingService(app.Redis)
+	cachingSvc = caching.NewRedisCachingService(app.Redis, app.Logger)
 	if app.Redis == nil {
 		cachingSvc = caching.NewNullCachingService()
 	}
 	sessSvc := services.NewSessionServiceImpl(sessStore, app.Logger)
 	fileSvc := services.NewFileServiceImpl(fileStore, cachingSvc, app.Logger)
+	uploadCompletionSvc := services.NewUploadCompletionServiceImpl(sessStore, fileStore, fileStorage, cachingSvc, app.Logger)
 
 	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", app.Config.AWSConfig.Region, app.Config.AWSConfig.AccountID, app.Config.ServiceConfig.UploadsNotificationsQueueName)
-	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, fileStore, sessStore, cachingSvc, queueUrl)
+	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, uploadCompletionSvc, queueUrl, app.Logger)
 	go uploadsReceiver.Start()
 
-	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, app.Config.ServiceConfig.UploadsURL, app.Logger)
+	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, uploadCompletionSvc, app.Config.ServiceConfig.UploadsURL, app.Logger)
+
+	app.Logger.Info("sessions services initialized successfully")
 
 	return &Services{
 		Sessions: sessSvc,
@@ -62,37 +69,38 @@ func BuildServices(app *App) *Services {
 		},
 
 		UploadHandler: handler,
+		logger:        app.Logger,
 	}
 }
 
 func (s *Services) Shutdown(ctx context.Context) error {
-	log.Println("shutting down services")
+	s.logger.Info("shutting down services")
 
 	if s.Stores != nil {
 		if err := s.Stores.Shutdown(ctx); err != nil {
-			log.Printf("stores shutdown error: %v", err)
+			s.logger.Error("stores shutdown error", "err", err.Error())
 		}
 	}
 
 	if s.Uploads != nil {
 		if sh, ok := s.Uploads.(Shutdowner); ok {
 			if err := sh.Shutdown(ctx); err != nil {
-				log.Printf("uploads receiver shutdown error: %v", err)
+				s.logger.Error("uploads receiver shutdown error", "err", err.Error())
 			}
 		}
 	}
 
-	log.Println("services shutdown complete")
+	s.logger.Info("services shutdown complete")
 	return nil
 }
 
 func (s *Stores) Shutdown(ctx context.Context) error {
-	log.Println("shutting down stores")
+	s.logger.Info("shutting down stores")
 
 	shutdownIfPossible := func(name string, v any) {
 		if sh, ok := v.(Shutdowner); ok {
 			if err := sh.Shutdown(ctx); err != nil {
-				log.Printf("%s store shutdown error: %v", name, err)
+				s.logger.Error(fmt.Sprintf("%s store shutdown error", name), "err", err.Error())
 			}
 		}
 	}
@@ -100,6 +108,6 @@ func (s *Stores) Shutdown(ctx context.Context) error {
 	shutdownIfPossible("files", s.files)
 	shutdownIfPossible("sessions", s.sessions)
 
-	log.Println("stores shutdown complete")
+	s.logger.Info("stores shutdown complete")
 	return nil
 }
