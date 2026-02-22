@@ -39,6 +39,7 @@ func BuildServices(app *App) *Services {
 
 	fileStore := store.NewDynamoDbFileStoreImpl(app.DynamoDB, app.Config.DynamoDBConfig.FilesTableName)
 	sessStore := store.NewSessionStoreImpl(app.DynamoDB, app.Config.UploadsTableName)
+	fileStorage := store.NewS3FileStorageImpl(app.S3, app.Config.BucketName, app.Logger)
 
 	var cachingSvc caching.CachingService
 	cachingSvc = caching.NewRedisCachingService(app.Redis, app.Logger)
@@ -47,12 +48,13 @@ func BuildServices(app *App) *Services {
 	}
 	sessSvc := services.NewSessionServiceImpl(sessStore, app.Logger)
 	fileSvc := services.NewFileServiceImpl(fileStore, cachingSvc, app.Logger)
+	uploadCompletionSvc := services.NewUploadCompletionServiceImpl(sessStore, fileStore, fileStorage, cachingSvc, app.Logger)
 
 	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", app.Config.AWSConfig.Region, app.Config.AWSConfig.AccountID, app.Config.ServiceConfig.UploadsNotificationsQueueName)
-	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, fileStore, sessStore, cachingSvc, queueUrl, app.Logger)
+	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, uploadCompletionSvc, queueUrl, app.Logger)
 	go uploadsReceiver.Start()
 
-	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, app.Config.ServiceConfig.UploadsURL, app.Logger)
+	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, uploadCompletionSvc, app.Config.ServiceConfig.UploadsURL, app.Logger)
 
 	app.Logger.Info("sessions services initialized successfully")
 

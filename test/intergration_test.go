@@ -12,11 +12,13 @@ import (
 	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/Yulian302/lfusys-services-sessions/queues"
+	"github.com/Yulian302/lfusys-services-sessions/services"
 	"github.com/Yulian302/lfusys-services-sessions/store"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/stretchr/testify/require"
 )
@@ -26,6 +28,7 @@ const awsEndpoint = "http://localhost:4566"
 type TestEnv struct {
 	Dynamo   *dynamodb.Client
 	Sqs      *sqs.Client
+	S3       *s3.Client
 	QueueURL string
 }
 
@@ -40,6 +43,10 @@ func setupTestEnv(t *testing.T) *TestEnv {
 	})
 
 	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
+		o.BaseEndpoint = aws.String(awsEndpoint)
+	})
+
+	s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(awsEndpoint)
 	})
 
@@ -75,10 +82,16 @@ func setupTestEnv(t *testing.T) *TestEnv {
 	})
 	require.NoError(t, err)
 
+	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
+		Bucket: aws.String("lfusysbucket"),
+	})
+	require.NoError(t, err)
+
 	return &TestEnv{
 		Dynamo:   db,
 		Sqs:      sqsClient,
-		QueueURL: *q.QueueUrl, // IMPORTANT
+		S3:       s3Client,
+		QueueURL: *q.QueueUrl,
 	}
 }
 
@@ -90,13 +103,15 @@ func TestUploadCompleted_DeletesSession(t *testing.T) {
 
 	sessionStore := store.NewSessionStoreImpl(env.Dynamo, "sessions")
 	fileStore := store.NewDynamoDbFileStoreImpl(env.Dynamo, "files")
+	fileStorage := store.NewS3FileStorageImpl(env.S3, "lfusysbucket", logger.NullLogger{})
+	cachingSvc := caching.NewNullCachingService()
+
+	uploadCompletionSvc := services.NewUploadCompletionServiceImpl(sessionStore, fileStore, fileStorage, cachingSvc, logger.NullLogger{})
 
 	receiver := queues.NewUploadsNotifyReceiveImpl(
 		ctx,
 		env.Sqs,
-		fileStore,
-		sessionStore,
-		caching.NewNullCachingService(),
+		uploadCompletionSvc,
 		env.QueueURL, // MUST be real QueueURL
 		logger.NullLogger{},
 	)

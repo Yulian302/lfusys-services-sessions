@@ -6,6 +6,8 @@ type File struct {
 	FileId      string    `dynamodbav:"file_id"`      // Unique file identifier
 	UploadId    string    `dynamodbav:"upload_id"`    // Corresponding upload id
 	OwnerEmail  string    `dynamodbav:"owner_email"`  // File owner email
+	Name        string    `dynamodbav:"name"`         // File name
+	Type        string    `dynamodbav:"type"`         // File type
 	Size        uint64    `dynamodbav:"file_size"`    // Size of a file
 	TotalChunks uint32    `dynamodbav:"total_chunks"` // Number of 5MB file chunks
 	Checksum    string    `dynamodbav:"checksum"`     // File checksum

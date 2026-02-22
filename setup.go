@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -31,6 +32,7 @@ type App struct {
 	DynamoDB *dynamodb.Client
 	Redis    *redis.Client
 	Sqs      *sqs.Client
+	S3       *s3.Client
 
 	Config    config.Config
 	AwsConfig aws.Config
@@ -67,12 +69,18 @@ func SetupApp() (*App, error) {
 		return nil, errors.New("could not init sqs")
 	}
 
+	s3 := initS3(awsCfg)
+	if s3 == nil {
+		return nil, errors.New("could not init s3")
+	}
+
 	appLogger := logger.NewSlogLogger(logger.CreateAppLogger(cfg.Env))
 
 	app := &App{
 		DynamoDB: db,
 		Redis:    rdb,
 		Sqs:      sqs,
+		S3:       s3,
 
 		Config:    cfg,
 		AwsConfig: awsCfg,
@@ -181,6 +189,10 @@ func initRedis(cfg config.RedisConfig) *redis.Client {
 
 func initSqs(cfg aws.Config) *sqs.Client {
 	return sqs.NewFromConfig(cfg)
+}
+
+func initS3(cfg aws.Config) *s3.Client {
+	return s3.NewFromConfig(cfg)
 }
 
 func (a *App) Shutdown(ctx context.Context) error {

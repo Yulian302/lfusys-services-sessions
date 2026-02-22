@@ -3,20 +3,16 @@ package queues
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/Yulian302/lfusys-services-commons/caching"
-	cerr "github.com/Yulian302/lfusys-services-commons/errors"
 	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-sessions/models"
-	"github.com/Yulian302/lfusys-services-sessions/store"
+	"github.com/Yulian302/lfusys-services-sessions/services"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
-	"github.com/google/uuid"
 )
 
 type UploadsNotifyReceiver interface {
@@ -24,11 +20,9 @@ type UploadsNotifyReceiver interface {
 }
 
 type UploadsNotifyReceiverImpl struct {
-	client       *sqs.Client
-	fileStore    store.FileStore
-	sessionStore store.SessionStore
-	cachingSvc   caching.CachingService
-	queueUrl     string
+	client    *sqs.Client
+	uploadSvc services.UploadCompletionService
+	queueUrl  string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -40,9 +34,7 @@ type UploadsNotifyReceiverImpl struct {
 func NewUploadsNotifyReceiveImpl(
 	parent context.Context,
 	client *sqs.Client,
-	fileStore store.FileStore,
-	sessionStore store.SessionStore,
-	cachingSvc caching.CachingService,
+	uploadSvc services.UploadCompletionService,
 	queueUrl string,
 	l logger.Logger,
 ) *UploadsNotifyReceiverImpl {
@@ -50,14 +42,12 @@ func NewUploadsNotifyReceiveImpl(
 	ctx, cancel := context.WithCancel(parent)
 
 	return &UploadsNotifyReceiverImpl{
-		client:       client,
-		fileStore:    fileStore,
-		sessionStore: sessionStore,
-		cachingSvc:   cachingSvc,
-		queueUrl:     queueUrl,
-		ctx:          ctx,
-		cancel:       cancel,
-		logger:       l,
+		client:    client,
+		uploadSvc: uploadSvc,
+		queueUrl:  queueUrl,
+		ctx:       ctx,
+		cancel:    cancel,
+		logger:    l,
 	}
 }
 
@@ -125,68 +115,13 @@ func (r *UploadsNotifyReceiverImpl) handleMessage(ctx context.Context, msg types
 		return
 	}
 
-	session, err := r.sessionStore.GetSession(ctx, evt.UploadId)
-	if errors.Is(err, cerr.ErrSessionNotFound) {
-		// already processed previously
-		r.logger.Info("message already processed")
-		r.deleteMessage(ctx, msg)
-		return
-	}
+	err := r.uploadSvc.CompleteUpload(ctx, evt.UploadId)
 	if err != nil {
+		r.logger.Error("failed to complete upload", "upload_id", evt.UploadId, "error", err)
 		return // retry
-	}
-
-	file, err := buildFileFromSession(*session)
-	if err != nil {
-		r.deleteMessage(ctx, msg)
-		return
-	}
-
-	if err := r.fileStore.Create(ctx, file); err != nil {
-		return // retry
-	}
-
-	// delete upload session
-	err = r.sessionStore.Delete(ctx, evt.UploadId)
-	if err != nil {
-		r.logger.Error("upload session deletion failed", "err", err.Error())
-	}
-
-	// invalidate cache
-	filesKey := fmt.Sprintf("user:files:%s", file.OwnerEmail)
-	if err = r.cachingSvc.Delete(ctx, filesKey); err != nil {
-		r.logger.Error("cached files invalidation failed", "err", err.Error())
 	}
 
 	r.deleteMessage(ctx, msg)
-}
-
-func buildFileFromSession(session models.UploadSession) (models.File, error) {
-	if session.UploadId == "" {
-		return models.File{}, errors.New("missing upload_id")
-	}
-
-	if session.FileSize <= 0 {
-		return models.File{}, errors.New("invalid file size")
-	}
-
-	if session.Status != "completed" {
-		return models.File{}, errors.New("upload not completed")
-	}
-
-	now := time.Now().UTC()
-
-	file := models.File{
-		FileId:      uuid.NewString(),
-		UploadId:    session.UploadId,
-		OwnerEmail:  session.UserEmail,
-		Size:        session.FileSize,
-		TotalChunks: session.TotalChunks,
-		CreatedAt:   now,
-	}
-
-	return file, nil
-
 }
 
 func (r *UploadsNotifyReceiverImpl) Shutdown(ctx context.Context) error {
