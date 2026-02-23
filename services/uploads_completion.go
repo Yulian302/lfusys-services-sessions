@@ -15,6 +15,7 @@ import (
 )
 
 type UploadCompletionService interface {
+	MarkChunkComplete(ctx context.Context, uploadID string, chunkIdx uint32) error
 	CompleteUpload(ctx context.Context, uploadID string) error
 	GenerateDownloadUrl(ctx context.Context, key string, ttl time.Duration) (string, error)
 }
@@ -42,6 +43,87 @@ func NewUploadCompletionServiceImpl(
 		cachingSvc:   cachingSvc,
 		logger:       l,
 	}
+}
+
+func (svc *UploadCompletionServiceImpl) MarkChunkComplete(ctx context.Context, uploadID string, chunkIdx uint32) error {
+	session, err := svc.sessionStore.GetSession(ctx, uploadID)
+	if err != nil {
+		svc.logger.Error("failed to get upload session",
+			"upload_id", uploadID,
+			"chunk_idx", chunkIdx,
+			"error", err,
+		)
+		return err
+	}
+
+	count, err := svc.sessionStore.PutChunk(ctx, uploadID, chunkIdx, session.TotalChunks)
+	if err != nil {
+		svc.logger.Error("failed to mark chunk complete",
+			"upload_id", uploadID,
+			"chunk_idx", chunkIdx,
+			"total_chunks", session.TotalChunks,
+			"error", err,
+		)
+		return err
+	}
+
+	svc.logger.Info("chunk marked as complete", "uploadId", uploadID, "chunkId", chunkIdx)
+	svc.logger.Info("now completed", "count", count)
+	if count != session.TotalChunks {
+		return nil
+	}
+
+	svc.logger.Info("started marking upload as complete")
+
+	complete, err := svc.sessionStore.MarkUploadComplete(ctx, uploadID, session.TotalChunks)
+	if err != nil {
+		svc.logger.Error("failed to mark upload complete",
+			"upload_id", uploadID,
+			"error", err,
+		)
+		return err
+	}
+
+	if complete {
+		svc.logger.Info("upload state transitioned to completed",
+			"upload_id", uploadID,
+		)
+		return svc.CompleteUpload(ctx, uploadID)
+	}
+
+	svc.logger.Info("upload already marked completed by another worker",
+		"upload_id", uploadID,
+	)
+
+	// 🔥 Self-healing check:
+	// Ensure finalization is done anyway.
+	return svc.ensureFinalized(ctx, uploadID)
+}
+
+func (svc *UploadCompletionServiceImpl) ensureFinalized(
+	ctx context.Context,
+	uploadID string,
+) error {
+
+	session, err := svc.sessionStore.GetSession(ctx, uploadID)
+	if errors.Is(err, cerr.ErrSessionNotFound) {
+		// Already finalized and cleaned up
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if session.Status != "completed" {
+		// Not ready for finalization
+		return nil
+	}
+
+	svc.logger.Info("ensuring upload finalization",
+		"upload_id", uploadID,
+	)
+
+	return svc.CompleteUpload(ctx, uploadID)
 }
 
 func (svc *UploadCompletionServiceImpl) CompleteUpload(ctx context.Context, uploadID string) error {

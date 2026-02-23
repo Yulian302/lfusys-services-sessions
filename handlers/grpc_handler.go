@@ -19,17 +19,15 @@ type GrpcHandler struct {
 	fileService      services.FileService
 	uploadCompletion services.UploadCompletionService
 	pb.UnimplementedUploaderServer
-	uploadsUrl string
 
 	logger logger.Logger
 }
 
-func NewGrpcHandler(sessSvc services.SessionService, fileSvc services.FileService, uploadCompletion services.UploadCompletionService, uploadsUrl string, l logger.Logger) *GrpcHandler {
+func NewGrpcHandler(sessSvc services.SessionService, fileSvc services.FileService, uploadCompletion services.UploadCompletionService, l logger.Logger) *GrpcHandler {
 	return &GrpcHandler{
 		sessionService:   sessSvc,
 		fileService:      fileSvc,
 		uploadCompletion: uploadCompletion,
-		uploadsUrl:       uploadsUrl,
 		logger:           l,
 	}
 }

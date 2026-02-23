@@ -100,7 +100,6 @@ func (r *UploadsNotifyReceiverImpl) deleteMessage(ctx context.Context, msg types
 }
 
 func (r *UploadsNotifyReceiverImpl) handleMessage(ctx context.Context, msg types.Message) {
-
 	var evt models.UploadCompletedEvent
 	if msg.Body == nil {
 		r.logger.Info("empty message body")
@@ -115,9 +114,11 @@ func (r *UploadsNotifyReceiverImpl) handleMessage(ctx context.Context, msg types
 		return
 	}
 
-	err := r.uploadSvc.CompleteUpload(ctx, evt.UploadId)
+	r.logger.Info(fmt.Sprintf("chunk %d complete message received", evt.ChunkIdx))
+
+	err := r.uploadSvc.MarkChunkComplete(ctx, evt.UploadId, evt.ChunkIdx)
 	if err != nil {
-		r.logger.Error("failed to complete upload", "upload_id", evt.UploadId, "error", err)
+		r.logger.Error("failed to mark chunk as complete", "upload_id", evt.UploadId, "chunk_idx", evt.ChunkIdx, "error", err)
 		return // retry
 	}
 

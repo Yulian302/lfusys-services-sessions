@@ -54,7 +54,7 @@ func BuildServices(app *App) *Services {
 	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, uploadCompletionSvc, queueUrl, app.Logger)
 	go uploadsReceiver.Start()
 
-	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, uploadCompletionSvc, app.Config.ServiceConfig.UploadsURL, app.Logger)
+	handler := handlers.NewGrpcHandler(sessSvc, fileSvc, uploadCompletionSvc, app.Logger)
 
 	app.Logger.Info("sessions services initialized successfully")
 
