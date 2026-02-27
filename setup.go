@@ -43,13 +43,17 @@ type App struct {
 }
 
 func SetupApp() (*App, error) {
-	cfg := config.LoadConfig()
-
-	if err := cfg.AWSConfig.Validate(); err != nil {
+	cfg, err := config.LoadConfig(config.ConfigOptions{
+		LoadAWS:      true,
+		LoadDynamoDB: true,
+		LoadRedis:    true,
+		LoadSqs:      true,
+	}, config.Sessions)
+	if err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	awsCfg, err := initAWS(*cfg.AWSConfig)
+	awsCfg, err := initAWS(cfg.AWS)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +63,7 @@ func SetupApp() (*App, error) {
 		return nil, errors.New("could not init dynamodb")
 	}
 
-	rdb := initRedis(*cfg.RedisConfig)
+	rdb := initRedis(cfg.Redis)
 	if rdb == nil {
 		return nil, errors.New("could not init redis")
 	}
@@ -111,7 +115,7 @@ func (a *App) Run() error {
 	)
 	a.createHealthServer(ctx)
 
-	l, err := net.Listen("tcp", a.Config.ServiceConfig.SessionGRPCAddr)
+	l, err := net.Listen("tcp", a.Config.Service.Sessions.Addr)
 	if err != nil {
 		return err
 	}
