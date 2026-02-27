@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"os"
+	"log"
 	"os/signal"
 	"syscall"
 	"time"
@@ -16,8 +16,7 @@ func main() {
 
 	app, err := SetupApp()
 	if err != nil {
-		app.Logger.Error("app initialization failed", "reason", err.Error())
-		os.Exit(1)
+		log.Fatalf("app initialization failed. Error: %s", err.Error())
 	}
 
 	go func() {
@@ -26,7 +25,7 @@ func main() {
 		}
 	}()
 
-	app.Logger.Info("gRPC server started at %v", app.Config.ServiceConfig.SessionGRPCAddr)
+	app.Logger.Info("gRPC server started", "address", app.Config.Service.Sessions.Addr)
 
 	<-ctx.Done()
 

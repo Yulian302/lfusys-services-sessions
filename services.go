@@ -36,10 +36,9 @@ type Shutdowner interface {
 }
 
 func BuildServices(app *App) *Services {
-
-	fileStore := store.NewDynamoDbFileStoreImpl(app.DynamoDB, app.Config.DynamoDBConfig.FilesTableName)
-	sessStore := store.NewSessionStoreImpl(app.DynamoDB, app.Config.UploadsTableName)
-	fileStorage := store.NewS3FileStorageImpl(app.S3, app.Config.BucketName, app.Logger)
+	fileStore := store.NewDynamoDbFileStoreImpl(app.DynamoDB, app.Config.DynamoDB.FilesTableName)
+	sessStore := store.NewSessionStoreImpl(app.DynamoDB, app.Config.DynamoDB.UploadsTableName)
+	fileStorage := store.NewS3FileStorageImpl(app.S3, app.Config.AWS.BucketName, app.Logger)
 
 	var cachingSvc caching.CachingService
 	cachingSvc = caching.NewRedisCachingService(app.Redis, app.Logger)
@@ -50,7 +49,7 @@ func BuildServices(app *App) *Services {
 	fileSvc := services.NewFileServiceImpl(fileStore, cachingSvc, app.Logger)
 	uploadCompletionSvc := services.NewUploadCompletionServiceImpl(sessStore, fileStore, fileStorage, cachingSvc, app.Logger)
 
-	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", app.Config.AWSConfig.Region, app.Config.AWSConfig.AccountID, app.Config.ServiceConfig.UploadsNotificationsQueueName)
+	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", app.Config.AWS.Region, app.Config.AWS.AccountID, app.Config.Sqs.QueueName)
 	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, uploadCompletionSvc, queueUrl, app.Logger)
 	go uploadsReceiver.Start()
 
