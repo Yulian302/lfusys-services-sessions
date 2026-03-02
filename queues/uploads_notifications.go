@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -73,7 +76,7 @@ func (r *UploadsNotifyReceiverImpl) pollLoop() error {
 
 		out, err := r.client.ReceiveMessage(r.ctx, &sqs.ReceiveMessageInput{
 			QueueUrl:            aws.String(r.queueUrl),
-			MaxNumberOfMessages: 1,
+			MaxNumberOfMessages: 10,
 			WaitTimeSeconds:     20, // long poll
 			VisibilityTimeout:   30,
 		})
@@ -82,9 +85,15 @@ func (r *UploadsNotifyReceiverImpl) pollLoop() error {
 			continue
 		}
 
+		sem := make(chan struct{}, 20)
+
 		for _, msg := range out.Messages {
+			sem <- struct{}{}
 			r.logger.Info("handling message: " + *msg.MessageId)
-			r.handleMessage(r.ctx, msg)
+			go func(m types.Message) {
+				defer func() { <-sem }()
+				r.handleMessage(r.ctx, m)
+			}(msg)
 		}
 	}
 }
@@ -100,29 +109,70 @@ func (r *UploadsNotifyReceiverImpl) deleteMessage(ctx context.Context, msg types
 }
 
 func (r *UploadsNotifyReceiverImpl) handleMessage(ctx context.Context, msg types.Message) {
-	var evt models.UploadCompletedEvent
 	if msg.Body == nil {
 		r.logger.Info("empty message body")
 		r.deleteMessage(ctx, msg)
 		return
 	}
 
-	if err := json.Unmarshal([]byte(*msg.Body), &evt); err != nil {
-		// poison message → delete or DLQ
-		r.logger.Info("wrong message structure")
-		r.deleteMessage(ctx, msg)
+	var s3evt models.S3Event
+	if err := json.Unmarshal([]byte(*msg.Body), &s3evt); err != nil {
+		r.logger.Error("failed to unmarhal s3 event", "error", err)
+		r.deleteMessage(ctx, msg) // poison
 		return
 	}
 
-	r.logger.Info(fmt.Sprintf("chunk %d complete message received", evt.ChunkIdx))
+	for _, record := range s3evt.Records {
+		key, err := url.QueryUnescape(record.S3.Object.Key)
+		if err != nil {
+			r.logger.Error("could not url decode key", "err", err)
+			continue
+		}
 
-	err := r.uploadSvc.MarkChunkComplete(ctx, evt.UploadId, evt.ChunkIdx)
-	if err != nil {
-		r.logger.Error("failed to mark chunk as complete", "upload_id", evt.UploadId, "chunk_idx", evt.ChunkIdx, "error", err)
-		return // retry
+		uploadID, chunkIdx, err := parseChunkKey(key)
+		if err != nil {
+			r.logger.Error("invalid object key", "key", key, "error", err)
+			continue
+		}
+
+		r.logger.Info("chunk complete event received",
+			"upload_id", uploadID,
+			"chunk_idx", chunkIdx,
+		)
+
+		err = r.uploadSvc.MarkChunkComplete(ctx, uploadID, uint32(chunkIdx))
+		if err != nil {
+			r.logger.Error("failed to mark chunk complete",
+				"upload_id", uploadID,
+				"chunk_idx", chunkIdx,
+				"error", err,
+			)
+			return
+		}
 	}
 
 	r.deleteMessage(ctx, msg)
+}
+
+func parseChunkKey(key string) (string, int, error) {
+	parts := strings.Split(key, "/")
+	if len(parts) != 3 {
+		return "", 0, fmt.Errorf("invalid key format")
+	}
+
+	uploadID := parts[1]
+	chunkPart := parts[2]
+	if !strings.HasPrefix(chunkPart, "chunk_") {
+		return "", 0, fmt.Errorf("invalid chunk format")
+	}
+
+	idxStr := strings.TrimPrefix(chunkPart, "chunk_")
+	idx, err := strconv.Atoi(idxStr)
+	if err != nil {
+		return "", 0, err
+	}
+
+	return uploadID, idx, nil
 }
 
 func (r *UploadsNotifyReceiverImpl) Shutdown(ctx context.Context) error {

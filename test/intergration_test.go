@@ -129,8 +129,58 @@ func TestUploadCompleted_DeletesSession(t *testing.T) {
 		Status:      "completed",
 	}))
 
-	body, _ := json.Marshal(models.UploadCompletedEvent{
-		UploadId: "1",
+	body, _ := json.Marshal(struct {
+		Records []struct {
+			EventName string `json:"eventName"`
+			S3        struct {
+				Bucket struct {
+					Name string `json:"name"`
+				} `json:"bucket"`
+				Object struct {
+					Key  string `json:"key"`
+					Size int64  `json:"size"`
+				} `json:"object"`
+			} `json:"s3"`
+		} `json:"Records"`
+	}{
+		Records: []struct {
+			EventName string `json:"eventName"`
+			S3        struct {
+				Bucket struct {
+					Name string `json:"name"`
+				} `json:"bucket"`
+				Object struct {
+					Key  string `json:"key"`
+					Size int64  `json:"size"`
+				} `json:"object"`
+			} `json:"s3"`
+		}{
+			{
+				EventName: "ObjectCreated:Put",
+				S3: struct {
+					Bucket struct {
+						Name string `json:"name"`
+					} `json:"bucket"`
+					Object struct {
+						Key  string `json:"key"`
+						Size int64  `json:"size"`
+					} `json:"object"`
+				}{
+					Bucket: struct {
+						Name string `json:"name"`
+					}{
+						Name: "lfusyschunks",
+					},
+					Object: struct {
+						Key  string `json:"key"`
+						Size int64  `json:"size"`
+					}{
+						Key:  "uploads/824ed80e-1266-4db1-ac39-46b827c89f90/chunk_3",
+						Size: 20815,
+					},
+				},
+			},
+		},
 	})
 
 	_, err := env.Sqs.SendMessage(ctx, &sqs.SendMessageInput{
