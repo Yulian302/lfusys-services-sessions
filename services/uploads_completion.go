@@ -56,7 +56,7 @@ func (svc *UploadCompletionServiceImpl) MarkChunkComplete(ctx context.Context, u
 		return err
 	}
 
-	count, err := svc.sessionStore.PutChunk(ctx, uploadID, chunkIdx, session.TotalChunks)
+	_, err = svc.sessionStore.PutChunk(ctx, uploadID, chunkIdx)
 	if err != nil {
 		svc.logger.Error("failed to mark chunk complete",
 			"upload_id", uploadID,
@@ -68,12 +68,6 @@ func (svc *UploadCompletionServiceImpl) MarkChunkComplete(ctx context.Context, u
 	}
 
 	svc.logger.Info("chunk marked as complete", "uploadId", uploadID, "chunkId", chunkIdx)
-	svc.logger.Info("now completed", "count", count)
-	if count != session.TotalChunks {
-		return nil
-	}
-
-	svc.logger.Info("started marking upload as complete")
 
 	complete, err := svc.sessionStore.MarkUploadComplete(ctx, uploadID, session.TotalChunks)
 	if err != nil {
@@ -95,8 +89,6 @@ func (svc *UploadCompletionServiceImpl) MarkChunkComplete(ctx context.Context, u
 		"upload_id", uploadID,
 	)
 
-	// 🔥 Self-healing check:
-	// Ensure finalization is done anyway.
 	return svc.ensureFinalized(ctx, uploadID)
 }
 

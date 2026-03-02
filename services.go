@@ -49,7 +49,7 @@ func BuildServices(app *App) *Services {
 	fileSvc := services.NewFileServiceImpl(fileStore, cachingSvc, app.Logger)
 	uploadCompletionSvc := services.NewUploadCompletionServiceImpl(sessStore, fileStore, fileStorage, cachingSvc, app.Logger)
 
-	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s.fifo", app.Config.AWS.Region, app.Config.AWS.AccountID, app.Config.Sqs.QueueName)
+	queueUrl := fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s", app.Config.AWS.Region, app.Config.AWS.AccountID, app.Config.Sqs.QueueName)
 	uploadsReceiver := queues.NewUploadsNotifyReceiveImpl(context.Background(), app.Sqs, uploadCompletionSvc, queueUrl, app.Logger)
 	go uploadsReceiver.Start()
 
