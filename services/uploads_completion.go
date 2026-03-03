@@ -11,6 +11,7 @@ import (
 	logger "github.com/Yulian302/lfusys-services-commons/logging"
 	"github.com/Yulian302/lfusys-services-sessions/models"
 	"github.com/Yulian302/lfusys-services-sessions/store"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/google/uuid"
 )
 
@@ -133,6 +134,14 @@ func (svc *UploadCompletionServiceImpl) CompleteUpload(ctx context.Context, uplo
 
 	if err := svc.fileStore.Create(ctx, file); err != nil {
 		svc.logger.Error("failed to create file record", "upload_id", uploadID, "error", err)
+		var cfe *types.ConditionalCheckFailedException
+		if errors.As(err, &cfe) {
+			// Someone else already created the file
+			svc.logger.Info("file already exists, skipping",
+				"upload_id", uploadID,
+			)
+			return nil
+		}
 		return err
 	}
 
