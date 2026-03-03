@@ -110,29 +110,29 @@ func (r *UploadsNotifyReceiverImpl) deleteMessage(ctx context.Context, msg types
 
 func (r *UploadsNotifyReceiverImpl) handleMessage(ctx context.Context, msg types.Message) {
 	if msg.Body == nil {
-		r.logger.Info("empty message body")
-		r.deleteMessage(ctx, msg)
+		r.logger.Warn("empty message body", "msgId", msg.MessageId)
 		return
 	}
 
 	var s3evt models.S3Event
 	if err := json.Unmarshal([]byte(*msg.Body), &s3evt); err != nil {
 		r.logger.Error("failed to unmarhal s3 event", "error", err)
-		r.deleteMessage(ctx, msg) // poison
 		return
 	}
+
+
 
 	for _, record := range s3evt.Records {
 		key, err := url.QueryUnescape(record.S3.Object.Key)
 		if err != nil {
 			r.logger.Error("could not url decode key", "err", err)
-			continue
+			return
 		}
 
 		uploadID, chunkIdx, err := parseChunkKey(key)
 		if err != nil {
 			r.logger.Error("invalid object key", "key", key, "error", err)
-			continue
+			return
 		}
 
 		r.logger.Info("chunk complete event received",
