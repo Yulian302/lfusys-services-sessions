@@ -23,7 +23,7 @@ type SessionStore interface {
 	GetStatus(ctx context.Context, uploadID string) (*models.UploadStatusResponse, error)
 	Delete(ctx context.Context, uploadID string) error
 	PutChunk(ctx context.Context, uploadID string, chunkIdx uint32) (uint32, error)
-	MarkUploadComplete(ctx context.Context, uploadID string, totalChunks uint32) (bool, error)
+	MarkUploadComplete(ctx context.Context, uploadID string) (bool, error)
 
 	health.ReadinessCheck
 }
@@ -294,7 +294,6 @@ func (s *SessionStoreImpl) PutChunk(ctx context.Context, uploadID string, chunkI
 func (s *SessionStoreImpl) MarkUploadComplete(
 	ctx context.Context,
 	uploadID string,
-	totalChunks uint32,
 ) (bool, error) {
 	finalized := false
 
@@ -309,16 +308,17 @@ func (s *SessionStoreImpl) MarkUploadComplete(
 					"upload_id": &types.AttributeValueMemberS{Value: uploadID},
 				},
 				UpdateExpression: aws.String(`
-			SET #status = :completed
+			SET #status = :completed,
+			completed_at = :now
 		`),
 				ConditionExpression: aws.String(`
-			size(uploaded_chunks) = :total
+			size(uploaded_chunks) = total_chunks
 			AND #status = :in_progress
 		`),
 				ExpressionAttributeValues: map[string]types.AttributeValue{
-					":total":       &types.AttributeValueMemberN{Value: strconv.FormatUint(uint64(totalChunks), 10)},
 					":completed":   &types.AttributeValueMemberS{Value: "completed"},
 					":in_progress": &types.AttributeValueMemberS{Value: "in_progress"},
+					":now":         &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339Nano)},
 				},
 				ExpressionAttributeNames: map[string]string{
 					"#status": "status",
