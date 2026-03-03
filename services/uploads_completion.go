@@ -46,22 +46,11 @@ func NewUploadCompletionServiceImpl(
 }
 
 func (svc *UploadCompletionServiceImpl) MarkChunkComplete(ctx context.Context, uploadID string, chunkIdx uint32) error {
-	session, err := svc.sessionStore.GetSession(ctx, uploadID)
-	if err != nil {
-		svc.logger.Error("failed to get upload session",
-			"upload_id", uploadID,
-			"chunk_idx", chunkIdx,
-			"error", err,
-		)
-		return err
-	}
-
-	_, err = svc.sessionStore.PutChunk(ctx, uploadID, chunkIdx)
+	_, err := svc.sessionStore.PutChunk(ctx, uploadID, chunkIdx)
 	if err != nil {
 		svc.logger.Error("failed to mark chunk complete",
 			"upload_id", uploadID,
 			"chunk_idx", chunkIdx,
-			"total_chunks", session.TotalChunks,
 			"error", err,
 		)
 		return err
@@ -69,7 +58,7 @@ func (svc *UploadCompletionServiceImpl) MarkChunkComplete(ctx context.Context, u
 
 	svc.logger.Info("chunk marked as complete", "uploadId", uploadID, "chunkId", chunkIdx)
 
-	complete, err := svc.sessionStore.MarkUploadComplete(ctx, uploadID, session.TotalChunks)
+	complete, err := svc.sessionStore.MarkUploadComplete(ctx, uploadID)
 	if err != nil {
 		svc.logger.Error("failed to mark upload complete",
 			"upload_id", uploadID,
@@ -96,7 +85,6 @@ func (svc *UploadCompletionServiceImpl) ensureFinalized(
 	ctx context.Context,
 	uploadID string,
 ) error {
-
 	session, err := svc.sessionStore.GetSession(ctx, uploadID)
 	if errors.Is(err, cerr.ErrSessionNotFound) {
 		// Already finalized and cleaned up

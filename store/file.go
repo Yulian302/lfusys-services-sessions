@@ -139,8 +139,9 @@ func (s *DynamoDbFileStoreImpl) Create(ctx context.Context, file models.File) er
 		retries.DefaultBaseDelay,
 		func() error {
 			_, err = s.client.PutItem(ctx, &dynamodb.PutItemInput{
-				TableName: aws.String(s.tableName),
-				Item:      fileItem,
+				TableName:           aws.String(s.tableName),
+				Item:                fileItem,
+				ConditionExpression: aws.String("attribute_not_exists(upload_id)"),
 			})
 			return err
 		},
