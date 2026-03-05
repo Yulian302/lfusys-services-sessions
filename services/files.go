@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/Yulian302/lfusys-services-commons/caching"
 	logger "github.com/Yulian302/lfusys-services-commons/logging"
@@ -63,7 +62,7 @@ func (svc *FileServiceImpl) GetFiles(ctx context.Context, email string) (*models
 
 	b, err := json.Marshal(files)
 	if err == nil {
-		if err = svc.cachingSvc.Set(ctx, filesKey, string(b), 12*time.Hour); err != nil {
+		if err = svc.cachingSvc.Set(ctx, filesKey, string(b), caching.UserFilesTTL); err != nil {
 			svc.logger.Debug("could not save files data in cache",
 				"email", email,
 				"error", err,
