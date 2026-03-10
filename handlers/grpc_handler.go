@@ -107,6 +107,26 @@ func (h *GrpcHandler) GetUploadStatus(ctx context.Context, upload *pb.UploadID) 
 	}, nil
 }
 
+func (h *GrpcHandler) GetUploadedChunks(ctx context.Context, upload *pb.UploadID) (*pb.UploadedChunksReply, error) {
+	out, err := h.sessionService.GetUploadedChunks(ctx, upload.UploadId)
+	if err != nil {
+		h.logger.Error("get uploaded chunks failed",
+			"upload_id", upload.UploadId,
+			"error", err,
+		)
+		return nil, err
+	}
+
+	h.logger.Debug("uploaded chunks retrieved",
+		"upload_id", upload.UploadId,
+		"chunks", out.Chunks,
+	)
+
+	return &pb.UploadedChunksReply{
+		Chunks: out.Chunks,
+	}, nil
+}
+
 func (h *GrpcHandler) GetFiles(ctx context.Context, userInfo *pb.UserInfo) (*pb.FilesReply, error) {
 	filesResponse, err := h.fileService.GetFiles(ctx, userInfo.Email)
 	if err != nil {

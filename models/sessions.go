@@ -68,3 +68,7 @@ type UploadStatusResponse struct {
 	Progress uint8        `json:"progress"`
 	Message  string       `json:"message"`
 }
+
+type UploadedChunksResponse struct {
+	Chunks []uint32 `json:"chunks"`
+}
