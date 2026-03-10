@@ -11,6 +11,7 @@ import (
 type SessionService interface {
 	CreateUpload(ctx context.Context, uploadSession models.UploadSession) error
 	GetUploadStatus(ctx context.Context, uploadID string) (*models.UploadStatusResponse, error)
+	GetUploadedChunks(ctx context.Context, uploadID string) (*models.UploadedChunksResponse, error)
 }
 
 type SessionServiceImpl struct {
@@ -67,4 +68,21 @@ func (svc *SessionServiceImpl) GetUploadStatus(ctx context.Context, uploadID str
 		"progress", status.Progress,
 	)
 	return status, nil
+}
+
+func (svc *SessionServiceImpl) GetUploadedChunks(ctx context.Context, uploadID string) (*models.UploadedChunksResponse, error) {
+	reply, err := svc.sessionStore.GetUploadedChunks(ctx, uploadID)
+	if err != nil {
+		svc.logger.Error("failed to get uploaded chunks",
+			"upload_id", uploadID,
+			"error", err,
+		)
+		return nil, err
+	}
+
+	svc.logger.Debug("uploaded chunks retrieved",
+		"upload_id", uploadID,
+		"chunks", reply.Chunks,
+	)
+	return reply, nil
 }

@@ -21,6 +21,7 @@ type SessionStore interface {
 	CreateSession(ctx context.Context, uploadSession models.UploadSession) error
 	GetSession(ctx context.Context, uploadID string) (*models.UploadSession, error)
 	GetStatus(ctx context.Context, uploadID string) (*models.UploadStatusResponse, error)
+	GetUploadedChunks(ctx context.Context, uploadID string) (*models.UploadedChunksResponse, error)
 	Delete(ctx context.Context, uploadID string) error
 	PutChunk(ctx context.Context, uploadID string, chunkIdx uint32) (uint32, error)
 	MarkUploadComplete(ctx context.Context, uploadID string) (bool, error)
@@ -207,6 +208,64 @@ func (s *SessionStoreImpl) GetStatus(ctx context.Context, uploadID string) (*mod
 	}
 
 	return &uploadStatus, nil
+}
+
+func (s *SessionStoreImpl) GetUploadedChunks(ctx context.Context, uploadID string) (*models.UploadedChunksResponse, error) {
+	var item map[string]types.AttributeValue
+
+	err := retries.Retry(
+		ctx,
+		retries.DefaultAttempts,
+		retries.DefaultBaseDelay,
+		func() error {
+			out, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
+				TableName: aws.String(s.tableName),
+				Key: map[string]types.AttributeValue{
+					"upload_id": &types.AttributeValueMemberS{Value: uploadID},
+				},
+				ProjectionExpression: aws.String("uploaded_chunks"),
+			})
+			if err != nil {
+				return err
+			}
+
+			if out.Item == nil {
+				return apperror.ErrSessionNotFound
+			}
+
+			item = out.Item
+			return nil
+		},
+		retries.IsRetriableDbError,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	attr, ok := item["uploaded_chunks"]
+	if !ok {
+		// no chunks uploaded yet
+		return &models.UploadedChunksResponse{
+			Chunks: []uint32{},
+		}, nil
+	}
+
+	ns, ok := attr.(*types.AttributeValueMemberNS)
+	if !ok {
+		return nil, errors.New("could not parse uploaded_chunks")
+	}
+
+	var uploadedChunks []uint32
+
+	for _, n := range ns.Value {
+		v, err := strconv.Atoi(n)
+		if err != nil {
+			return nil, err
+		}
+		uploadedChunks = append(uploadedChunks, uint32(v))
+	}
+
+	return &models.UploadedChunksResponse{Chunks: uploadedChunks}, nil
 }
 
 func (s *SessionStoreImpl) Delete(ctx context.Context, uploadID string) error {
